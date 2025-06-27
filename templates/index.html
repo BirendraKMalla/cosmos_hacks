@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Air Quality Checker</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""/>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px; /* Increased max-width for map */
+      margin: 0 auto;
+      padding: 20px;
+      text-align: center;
+    }
+    /* Map container styling */
+    #map {
+      height: 400px; /* Set a fixed height for the map */
+      width: 100%;
+      margin-top: 20px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+    }
+    button {
+      background-color: #4CAF50;
+      color: white;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+      margin-top: 10px; /* Added margin for spacing */
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+    #airQualityInfo {
+      margin-top: 20px;
+      padding: 20px;
+      border-radius: 5px;
+      background-color: #f9f9f9;
+      min-height: 100px; /* Ensure space for info */
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+    }
+    .good { color: green; }
+    .fair { color: #9ACD32; }
+    .moderate { color: orange; }
+    .poor { color: red; }
+    .very-poor { color: purple; }
+    .error { color: #D8000C; background-color: #FFD2D2; padding: 10px; border-radius: 5px; }
+    .loading {
+      border: 5px solid #f3f3f3;
+      border-top: 5px solid #3498db;
+      border-radius: 50%;
+      width: 30px;
+      height: 30px;
+      animation: spin 1s linear infinite;
+      margin: 20px auto;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    #coordsDisplay {
+        margin-top: 10px;
+        font-size: 0.9em;
+        color: #555;
+    }
+  </style>
+</head>
+<body>
+  <h1>Air Quality Checker</h1>
+  <p>Click on the map to select a location and get its Air Quality Index (AQI).</p>
+
+  <div id="map"></div>
+  <div id="coordsDisplay"></div>
+  <div id="airQualityInfo">
+    <p>Select a point on the map to see air quality information here.</p>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""></script>
+
+  <script>
+    const output = document.getElementById('airQualityInfo');
+    const coordsDisplay = document.getElementById('coordsDisplay');
+    let map; // Declare map variable globally
+    let currentMarker; // To keep track of the current marker
+
+    // Initialize the map
+    function initMap() {
+      // Default view (e.g., Kathmandu, Nepal)
+      map = L.map('map').setView([27.7172, 85.3240], 13); // Zoom level 13
+
+      // Add OpenStreetMap tiles
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+      }).addTo(map);
+
+      // Add a click event listener to the map
+      map.on('click', onMapClick);
+    }
+
+    // Function to handle map clicks
+    async function onMapClick(e) {
+      const lat = e.latlng.lat;
+      const lon = e.latlng.lng;
+
+      // Remove existing marker if any
+      if (currentMarker) {
+        map.removeLayer(currentMarker);
+      }
+
+      // Add a new marker at the clicked location
+      currentMarker = L.marker([lat, lon]).addTo(map)
+        .bindPopup(`Latitude: ${lat.toFixed(6)}<br>Longitude: ${lon.toFixed(6)}`).openPopup();
+
+      coordsDisplay.innerHTML = `Selected Coordinates: Lat: ${lat.toFixed(6)}, Lon: ${lon.toFixed(6)}`;
+      output.innerHTML = '<div class="loading"></div><p>Fetching air quality data...</p>';
+
+      try {
+        const response = await fetch(`/get_aqi?lat=${lat}&lon=${lon}`);
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.data || `HTTP error! Status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        console.log("API response:", data);
+
+        const aqi = data.data.aqi;
+        const components = data.data.iaqi || {};
+        const pm25 = components.pm25 ? components.pm25.v : "N/A";
+        const pm10 = components.pm10 ? components.pm10.v : "N/A";
+        let city = data.data.city?.name || "Selected location";
+
+        let locationMessage = `🌍 Air Quality in ${city}`;
+
+        // Check if this is fallback data
+        if (data.isFallback && data.fallbackCityName) {
+            locationMessage += `<br><small>(Data for ${data.fallbackCityName} as exact location data was unavailable)</small>`;
+        }
+
+        let level, levelClass;
+        if (aqi <= 50) {
+          level = "Good"; levelClass = "good";
+        } else if (aqi <= 100) {
+          level = "Fair"; levelClass = "fair";
+        } else if (aqi <= 150) {
+          level = "Moderate"; levelClass = "moderate";
+        } else if (aqi <= 200) {
+          level = "Poor"; levelClass = "poor";
+        } else {
+          level = "Very Poor"; levelClass = "very-poor";
+        }
+
+        output.innerHTML = `
+          <h3>${locationMessage}</h3>
+          <p><strong>AQI Level:</strong> <span class="${levelClass}">${aqi} (${level})</span></p>
+          <p><strong>PM2.5:</strong> ${pm25} µg/m³</p>
+          <p><strong>PM10:</strong> ${pm10} µg/m³</p>
+          <p><small>Last updated: ${new Date().toLocaleString()}</small></p>
+        `;
+      } catch (error) {
+        output.innerHTML = `<p class="error">Error: ${error.message}</p>`;
+      }
+    }
+
+    // Initialize map when the page loads
+    window.onload = initMap;
+  </script>
+</body>
+</html>
