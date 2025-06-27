@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Air Quality Checker</title>
+</head>
+<body>
+  <button id="getAirQualityBtn">Get My Air Quality</button>
+  <div id="airQualityInfo"></div>
+<script>
+  document.getElementById('getAirQualityBtn').addEventListener('click', function () {
+    const output = document.getElementById('airQualityInfo');
+    output.textContent = "Getting location...";
+
+    if (!navigator.geolocation) {
+      output.textContent = "Geolocation is not supported by your browser.";
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      function (position) {
+        const lat = position.coords.latitude;
+        const lon = position.coords.longitude;
+
+        fetch(`/get_aqi?lat=${lat}&lon=${lon}`)
+          .then(response => response.json())
+          .then(data => {
+            const aqi = data.list[0].main.aqi;
+            const pm25 = data.list[0].components.pm2_5;
+            const pm10 = data.list[0].components.pm10;
+
+            let level;
+            switch (aqi) {
+              case 1: level = "Good"; break;
+              case 2: level = "Fair"; break;
+              case 3: level = "Moderate"; break;
+              case 4: level = "Poor"; break;
+              case 5: level = "Very Poor"; break;
+              default: level = "Unknown";
+            }
+
+            output.innerHTML = `
+              <h3>🌍 Your Air Quality</h3>
+              <p><strong>AQI Level:</strong> ${aqi} (${level})</p>
+              <p><strong>PM2.5:</strong> ${pm25}</p>
+              <p><strong>PM10:</strong> ${pm10}</p>
+            `;
+          })
+          .catch(error => {
+            output.textContent = "Error fetching air quality: " + error.message;
+          });
+      },
+      function (error) {
+        output.textContent = "Error getting location: " + error.message;
+      }
+    );
+  });
+</script>
+</body>
+</html>
