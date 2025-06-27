@@ -21,6 +21,19 @@
       border: 1px solid #ccc;
       border-radius: 5px;
     }
+    .input-group {
+        margin-top: 20px;
+        display: flex;
+        justify-content: center;
+        gap: 10px; /* Space between input and button */
+    }
+    .input-group input[type="text"] {
+        padding: 8px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        flex-grow: 1; /* Allows input to take available space */
+        max-width: 300px; /* Max width for input */
+    }
     button {
       background-color: #4CAF50;
       color: white;
@@ -29,10 +42,34 @@
       border-radius: 4px;
       cursor: pointer;
       font-size: 16px;
-      margin-top: 10px; /* Added margin for spacing */
     }
     button:hover {
       background-color: #45a049;
+    }
+    #searchResultList {
+        list-style: none;
+        padding: 0;
+        margin-top: 10px;
+        max-height: 200px; /* Limit height for scrollability */
+        overflow-y: auto;
+        border: 1px solid #eee;
+        border-radius: 4px;
+        background-color: white;
+        text-align: left; /* Align text within list items */
+        margin-left: auto; /* Center the list horizontally */
+        margin-right: auto;
+        max-width: 400px; /* Max width for results list */
+    }
+    #searchResultList li {
+        padding: 8px 15px;
+        cursor: pointer;
+        border-bottom: 1px solid #eee;
+    }
+    #searchResultList li:last-child {
+        border-bottom: none; /* No border for the last item */
+    }
+    #searchResultList li:hover {
+        background-color: #f0f0f0;
     }
     #airQualityInfo {
       margin-top: 20px;
@@ -73,12 +110,16 @@
 </head>
 <body>
   <h1>Air Quality Checker</h1>
-  <p>Click on the map to select a location and get its Air Quality Index (AQI).</p>
+  <p>Select a location on the map, or search by city name.</p>
 
-  <div id="map"></div>
+  <div class="input-group">
+    <input type="text" id="citySearchInput" placeholder="Enter city name (e.g., Kathmandu)">
+    <button id="searchCityBtn">Search</button>
+  </div>
+  <ul id="searchResultList"></ul> <div id="map"></div>
   <div id="coordsDisplay"></div>
   <div id="airQualityInfo">
-    <p>Select a point on the map to see air quality information here.</p>
+    <p>Select a point on the map or search for a city to see air quality information here.</p>
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
@@ -88,50 +129,14 @@
   <script>
     const output = document.getElementById('airQualityInfo');
     const coordsDisplay = document.getElementById('coordsDisplay');
-    let map; // Declare map variable globally
-    let currentMarker; // To keep track of the current marker
+    const citySearchInput = document.getElementById('citySearchInput');
+    const searchCityBtn = document.getElementById('searchCityBtn');
+    const searchResultList = document.getElementById('searchResultList');
+    let map;
+    let currentMarker;
 
-    // Initialize the map
-    function initMap() {
-      // Default view (e.g., Kathmandu, Nepal)
-      map = L.map('map').setView([27.7172, 85.3240], 13); // Zoom level 13
-
-      // Add OpenStreetMap tiles
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-      }).addTo(map);
-
-      // Add a click event listener to the map
-      map.on('click', onMapClick);
-    }
-
-    // Function to handle map clicks
-    async function onMapClick(e) {
-      const lat = e.latlng.lat;
-      const lon = e.latlng.lng;
-
-      // Remove existing marker if any
-      if (currentMarker) {
-        map.removeLayer(currentMarker);
-      }
-
-      // Add a new marker at the clicked location
-      currentMarker = L.marker([lat, lon]).addTo(map)
-        .bindPopup(`Latitude: ${lat.toFixed(6)}<br>Longitude: ${lon.toFixed(6)}`).openPopup();
-
-      coordsDisplay.innerHTML = `Selected Coordinates: Lat: ${lat.toFixed(6)}, Lon: ${lon.toFixed(6)}`;
-      output.innerHTML = '<div class="loading"></div><p>Fetching air quality data...</p>';
-
-      try {
-        const response = await fetch(`/get_aqi?lat=${lat}&lon=${lon}`);
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.data || `HTTP error! Status: ${response.status}`);
-        }
-
-        const data = await response.json();
-        console.log("API response:", data);
-
+    // Helper function to update AQI info display
+    function displayAqiInfo(data) {
         const aqi = data.data.aqi;
         const components = data.data.iaqi || {};
         const pm25 = components.pm25 ? components.pm25.v : "N/A";
@@ -140,7 +145,6 @@
 
         let locationMessage = `🌍 Air Quality in ${city}`;
 
-        // Check if this is fallback data
         if (data.isFallback && data.fallbackCityName) {
             locationMessage += `<br><small>(Data for ${data.fallbackCityName} as exact location data was unavailable)</small>`;
         }
@@ -165,10 +169,116 @@
           <p><strong>PM10:</strong> ${pm10} µg/m³</p>
           <p><small>Last updated: ${new Date().toLocaleString()}</small></p>
         `;
+    }
+
+    // Main function to fetch AQI (either by lat/lon or station_id)
+    async function fetchAqi(params) {
+      output.innerHTML = '<div class="loading"></div><p>Fetching air quality data...</p>';
+      try {
+        const urlParams = new URLSearchParams(params).toString();
+        const response = await fetch(`/get_aqi?${urlParams}`);
+        if (!response.ok) {
+          // If response is not OK (e.g., 500, 502, 503, 504), read the error JSON from Flask
+          const errorData = await response.json();
+          throw new Error(errorData.data || `HTTP error! Status: ${response.status}`);
+        }
+        const data = await response.json();
+        console.log("API response:", data);
+        displayAqiInfo(data);
       } catch (error) {
         output.innerHTML = `<p class="error">Error: ${error.message}</p>`;
       }
     }
+
+    // Initialize the map
+    function initMap() {
+      map = L.map('map').setView([27.7172, 85.3240], 13); // Centered on Kathmandu, Nepal
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+      }).addTo(map);
+      map.on('click', onMapClick);
+    }
+
+    // Handle map clicks
+    function onMapClick(e) {
+      const lat = e.latlng.lat;
+      const lon = e.latlng.lng;
+
+      // Clear search results list and input
+      searchResultList.innerHTML = '';
+      citySearchInput.value = '';
+
+      if (currentMarker) {
+        map.removeLayer(currentMarker);
+      }
+      currentMarker = L.marker([lat, lon]).addTo(map)
+        .bindPopup(`Latitude: ${lat.toFixed(6)}<br>Longitude: ${lon.toFixed(6)}`).openPopup();
+      coordsDisplay.innerHTML = `Selected Coordinates: Lat: ${lat.toFixed(6)}, Lon: ${lon.toFixed(6)}`;
+
+      fetchAqi({ lat: lat, lon: lon });
+    }
+
+    // Handle city search button click
+    searchCityBtn.addEventListener('click', async function() {
+      const keyword = citySearchInput.value.trim();
+      if (!keyword) {
+        output.innerHTML = '<p class="error">Please enter a city name to search.</p>';
+        return;
+      }
+
+      output.innerHTML = '<div class="loading"></div><p>Searching for cities...</p>';
+      searchResultList.innerHTML = ''; // Clear previous search results
+
+      try {
+        const response = await fetch(`/search_city?keyword=${encodeURIComponent(keyword)}`);
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.data || `HTTP error! Status: ${response.status}`);
+        }
+        const data = await response.json();
+        console.log("Search API response:", data);
+
+        if (data.data && data.data.length > 0) {
+          output.innerHTML = '<p>Select a station from the search results:</p>';
+          data.data.forEach(station => {
+            const listItem = document.createElement('li');
+            listItem.textContent = station.name;
+            // Store uid, lat, lon as data attributes for easy access
+            listItem.dataset.uid = station.uid;
+            listItem.dataset.lat = station.lat;
+            listItem.dataset.lon = station.lon;
+
+            listItem.addEventListener('click', function() {
+              const selectedUid = this.dataset.uid;
+              const selectedLat = parseFloat(this.dataset.lat);
+              const selectedLon = parseFloat(this.dataset.lon);
+
+              // Update map to show selected station
+              if (currentMarker) {
+                map.removeLayer(currentMarker);
+              }
+              if (!isNaN(selectedLat) && !isNaN(selectedLon)) { // Check if coordinates are valid numbers
+                currentMarker = L.marker([selectedLat, selectedLon]).addTo(map)
+                  .bindPopup(`Station: ${this.textContent}<br>Lat: ${selectedLat.toFixed(6)}<br>Lon: ${selectedLon.toFixed(6)}`).openPopup();
+                map.setView([selectedLat, selectedLon], 13); // Center map on station
+                coordsDisplay.innerHTML = `Selected Station: ${this.textContent} (Lat: ${selectedLat.toFixed(6)}, Lon: ${selectedLon.toFixed(6)})`;
+              } else {
+                coordsDisplay.innerHTML = `Selected Station: ${this.textContent} (Coordinates not available)`;
+              }
+
+              searchResultList.innerHTML = ''; // Clear results after selection
+              fetchAqi({ station_id: selectedUid }); // Fetch AQI by station ID
+            });
+            searchResultList.appendChild(listItem);
+          });
+        } else {
+          output.innerHTML = `<p class="error">No air quality stations found for "${keyword}".</p>`;
+        }
+
+      } catch (error) {
+        output.innerHTML = `<p class="error">Error during search: ${error.message}</p>`;
+      }
+    });
 
     // Initialize map when the page loads
     window.onload = initMap;
