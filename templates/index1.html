@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Air Quality Checker</title>
+  <!-- Load Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Load Leaflet CSS for map styling -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""/>
+  <style>
+    /* Custom styles not covered by Tailwind (e.g., font, specific spinner animation) */
+    body {
+      font-family: "Inter", sans-serif; /* Using Inter font as per instructions */
+    }
+    /* Spinner animation for loading states */
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .loading-spinner {
+      border: 4px solid rgba(255, 255, 255, 0.3); /* Lighter border for contrast */
+      border-top: 4px solid #fff; /* White spinner */
+      border-radius: 50%;
+      width: 24px;
+      height: 24px;
+      animation: spin 1s linear infinite;
+    }
+    /* Custom scrollbar for search results */
+    #searchResultList::-webkit-scrollbar {
+        width: 8px;
+    }
+    #searchResultList::-webkit-scrollbar-track {
+        background: #f1f1f1;
+        border-radius: 10px;
+    }
+    #searchResultList::-webkit-scrollbar-thumb {
+        background: #cbd5e1; /* Tailwind gray-300 */
+        border-radius: 10px;
+    }
+    #searchResultList::-webkit-scrollbar-thumb:hover {
+        background: #94a3b8; /* Tailwind gray-400 */
+    }
+  </style>
+</head>
+<body class="bg-gradient-to-br from-blue-100 via-purple-100 to-pink-100 min-h-screen flex items-center justify-center py-10 px-4">
+  <div class="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-3xl transform transition-all duration-300 hover:scale-[1.01]">
+    <h1 class="text-4xl font-extrabold text-gray-900 mb-4 text-center drop-shadow-sm">Air Quality Explorer</h1>
+    <p class="text-lg text-gray-700 mb-8 text-center">Discover the air quality by clicking on the map or searching for a city.</p>
+
+    <!-- City Search Input -->
+    <div class="flex flex-col sm:flex-row items-center justify-center gap-4 mb-6">
+      <input type="text" id="citySearchInput" placeholder="Search for a city (e.g., New York)"
+             class="flex-grow max-w-sm px-5 py-2.5 border border-gray-300 rounded-full focus:outline-none focus:ring-3 focus:ring-blue-400 focus:border-transparent text-gray-800 shadow-sm transition duration-200">
+      <button id="searchCityBtn"
+              class="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-bold py-2.5 px-8 rounded-full shadow-lg transition duration-300 ease-in-out transform hover:-translate-y-1 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+        Search
+      </button>
+    </div>
+    <ul id="searchResultList" class="max-h-60 overflow-y-auto border border-gray-200 rounded-xl bg-white shadow-lg mb-6 hidden"></ul>
+
+    <!-- Map Container -->
+    <div id="map" class="h-96 w-full rounded-2xl shadow-xl border border-gray-300 mb-6 transition-all duration-300 hover:shadow-2xl"></div>
+    
+    <!-- Coordinates Display -->
+    <div id="coordsDisplay" class="text-base text-gray-600 mb-4 text-center font-medium"></div>
+
+    <!-- Air Quality Info Display -->
+    <div id="airQualityInfo" class="bg-gradient-to-br from-gray-50 to-gray-100 p-7 rounded-2xl shadow-inner min-h-[140px] flex items-center justify-center flex-col text-gray-800 border border-gray-200 transition-all duration-300">
+      <p class="text-lg text-gray-600">Select a point on the map or search for a city to see air quality information here.</p>
+    </div>
+  </div>
+
+  <!-- Leaflet JavaScript library -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""></script>
+
+  <script>
+    const output = document.getElementById('airQualityInfo');
+    const coordsDisplay = document.getElementById('coordsDisplay');
+    const citySearchInput = document.getElementById('citySearchInput');
+    const searchCityBtn = document.getElementById('searchCityBtn');
+    const searchResultList = document.getElementById('searchResultList');
+
+    let map;
+    let currentMarker;
+
+    // Helper function to update AQI info display
+    function displayAqiInfo(data) {
+        const aqi = data.data.aqi;
+        const components = data.data.iaqi || {};
+        const pm25 = components.pm25 ? components.pm25.v : "N/A";
+        const pm10 = components.pm10 ? components.pm10.v : "N/A";
+        let city = data.data.city?.name || "Selected location";
+
+        let locationMessage = `<span class="font-bold text-xl text-gray-900">Air Quality in ${city}</span>`;
+
+        if (data.isFallback && data.fallbackCityName) {
+            locationMessage += `<br><span class="text-sm text-gray-500">(Data for ${data.fallbackCityName} as exact location data was unavailable)</span>`;
+        }
+
+        output.innerHTML = `
+          <h3 class="text-2xl font-extrabold mb-3">${locationMessage}</h3>
+          <p class="text-xl mb-1"><strong>AQI Level:</strong> <span class="${getAqiLevelClass(aqi)} font-extrabold">${aqi} (${getAqiLevel(aqi)})</span></p>
+          <p class="text-lg mb-1"><strong>PM2.5:</strong> ${pm25} µg/m³</p>
+          <p class="text-lg mb-2"><strong>PM10:</strong> ${pm10} µg/m³</p>
+          <p class="text-xs text-gray-500 mt-2">Last updated: ${new Date().toLocaleString()}</p>
+        `;
+    }
+
+    // Helper functions for AQI level and class for styling
+    function getAqiLevel(aqi) {
+        if (aqi <= 50) return "Good";
+        if (aqi <= 100) return "Fair";
+        if (aqi <= 150) return "Moderate";
+        if (aqi <= 200) return "Poor";
+        return "Very Poor";
+    }
+
+    function getAqiLevelClass(aqi) {
+        if (aqi <= 50) return "text-green-500"; /* Tailwind green-500 */
+        if (aqi <= 100) return "text-yellow-500"; /* Tailwind yellow-500 */
+        if (aqi <= 150) return "text-orange-500"; /* Tailwind orange-500 */
+        if (aqi <= 200) return "text-red-500"; /* Tailwind red-500 */
+        return "text-purple-600"; /* Tailwind purple-600 */
+    }
+
+    // Main function to fetch AQI (either by lat/lon or station_id)
+    async function fetchAqi(params) {
+      output.innerHTML = '<div class="loading-spinner mb-2"></div><p class="text-gray-600 text-sm">Fetching current air quality data...</p>';
+      coordsDisplay.innerHTML = ''; // Clear coords display on new fetch
+
+      try {
+        const urlParams = new URLSearchParams(params).toString();
+        const response = await fetch(`/get_aqi?${urlParams}`);
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.data || `HTTP error! Status: ${response.status}`);
+        }
+        const data = await response.json();
+        console.log("API response:", data);
+        displayAqiInfo(data);
+
+      } catch (error) {
+        output.innerHTML = `<p class="text-red-600 font-semibold text-center p-4 bg-red-50 rounded-lg shadow-sm">Error: ${error.message}</p>`;
+      }
+    }
+
+    // Initialize the map
+    function initMap() {
+      map = L.map('map').setView([27.7172, 85.3240], 13); // Centered on Kathmandu, Nepal
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+      }).addTo(map);
+      map.on('click', onMapClick);
+    }
+
+    // Handle map clicks
+    function onMapClick(e) {
+      const lat = e.latlng.lat;
+      const lon = e.latlng.lng;
+
+      searchResultList.innerHTML = '';
+      searchResultList.classList.add('hidden'); // Hide search results
+      citySearchInput.value = '';
+      coordsDisplay.innerHTML = `Selected Coordinates: <span class="font-semibold text-blue-600">Lat: ${lat.toFixed(6)}, Lon: ${lon.toFixed(6)}</span>`;
+
+
+      if (currentMarker) {
+        map.removeLayer(currentMarker);
+      }
+      currentMarker = L.marker([lat, lon]).addTo(map)
+        .bindPopup(`Latitude: ${lat.toFixed(6)}<br>Longitude: ${lon.toFixed(6)}`).openPopup();
+      
+      fetchAqi({ lat: lat, lon: lon });
+    }
+
+    // Handle city search button click
+    searchCityBtn.addEventListener('click', async function() {
+      const keyword = citySearchInput.value.trim();
+      if (!keyword) {
+        output.innerHTML = '<p class="text-red-600 font-semibold text-center p-4 bg-red-50 rounded-lg shadow-sm">Please enter a city name to search.</p>';
+        searchResultList.classList.add('hidden');
+        return;
+      }
+
+      output.innerHTML = '<div class="loading-spinner mb-2"></div><p class="text-gray-600 text-sm">Searching for cities...</p>';
+      searchResultList.innerHTML = ''; // Clear previous search results
+      searchResultList.classList.add('hidden'); // Hide until results are ready
+      coordsDisplay.innerHTML = ''; // Clear coords display
+
+      try {
+        const response = await fetch(`/search_city?keyword=${encodeURIComponent(keyword)}`);
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.data || `HTTP error! Status: ${response.status}`);
+        }
+        const data = await response.json();
+        console.log("Search API response:", data);
+
+        if (data.data && data.data.length > 0) {
+          output.innerHTML = '<p class="text-gray-700 text-center mb-4">Select a station from the search results:</p>';
+          searchResultList.classList.remove('hidden'); // Show search results list
+          data.data.forEach(station => {
+            const listItem = document.createElement('li');
+            listItem.className = 'px-4 py-3 cursor-pointer border-b border-gray-200 last:border-b-0 hover:bg-blue-50 transition duration-150 ease-in-out text-gray-800 font-medium';
+            listItem.textContent = station.name;
+            listItem.dataset.uid = station.uid;
+            listItem.dataset.lat = station.lat;
+            listItem.dataset.lon = station.lon;
+
+            listItem.addEventListener('click', function() {
+              const selectedUid = this.dataset.uid;
+              const selectedLat = parseFloat(this.dataset.lat);
+              const selectedLon = parseFloat(this.dataset.lon);
+
+              if (currentMarker) {
+                map.removeLayer(currentMarker);
+              }
+              if (!isNaN(selectedLat) && !isNaN(selectedLon)) {
+                currentMarker = L.marker([selectedLat, selectedLon]).addTo(map)
+                  .bindPopup(`Station: ${this.textContent}<br>Lat: ${selectedLat.toFixed(6)}<br>Lon: ${selectedLon.toFixed(6)}`).openPopup();
+                map.setView([selectedLat, selectedLon], 13); // Center map on station
+                coordsDisplay.innerHTML = `Selected Station: <span class="font-semibold text-blue-600">${this.textContent}</span> (Lat: ${selectedLat.toFixed(6)}, Lon: ${selectedLon.toFixed(6)})`;
+              } else {
+                coordsDisplay.innerHTML = `Selected Station: <span class="font-semibold text-blue-600">${this.textContent}</span> (Coordinates not available)`;
+              }
+
+              searchResultList.innerHTML = ''; // Clear results after selection
+              searchResultList.classList.add('hidden'); // Hide search results
+              fetchAqi({ station_id: selectedUid }); // Fetch AQI by station ID
+            });
+            searchResultList.appendChild(listItem);
+          });
+        } else {
+          output.innerHTML = `<p class="text-red-600 font-semibold text-center p-4 bg-red-50 rounded-lg shadow-sm">No air quality stations found for "${keyword}".</p>`;
+          searchResultList.classList.add('hidden');
+        }
+
+      } catch (error) {
+        output.innerHTML = `<p class="text-red-600 font-semibold text-center p-4 bg-red-50 rounded-lg shadow-sm">Error during search: ${error.message}</p>`;
+        searchResultList.classList.add('hidden');
+      }
+    });
+
+    // Initialize map when the page loads
+    window.onload = initMap;
+  </script>
+</body>
+</html>

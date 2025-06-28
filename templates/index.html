@@ -1,287 +1,824 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Air Quality Checker</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Air Quality Health Companion</title>
+  <!-- Load Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Load Leaflet CSS for map styling -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
     integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
     crossorigin=""/>
   <style>
+    /* Custom styles not covered by Tailwind (e.g., font, specific spinner animation) */
     body {
-      font-family: Arial, sans-serif;
-      max-width: 800px; /* Increased max-width for map */
-      margin: 0 auto;
-      padding: 20px;
-      text-align: center;
+      font-family: "Inter", sans-serif;
     }
-    /* Map container styling */
-    #map {
-      height: 400px; /* Set a fixed height for the map */
-      width: 100%;
-      margin-top: 20px;
-      border: 1px solid #ccc;
-      border-radius: 5px;
-    }
-    .input-group {
-        margin-top: 20px;
-        display: flex;
-        justify-content: center;
-        gap: 10px; /* Space between input and button */
-    }
-    .input-group input[type="text"] {
-        padding: 8px;
-        border: 1px solid #ccc;
-        border-radius: 4px;
-        flex-grow: 1; /* Allows input to take available space */
-        max-width: 300px; /* Max width for input */
-    }
-    button {
-      background-color: #4CAF50;
-      color: white;
-      padding: 10px 20px;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 16px;
-    }
-    button:hover {
-      background-color: #45a049;
-    }
-    #searchResultList {
-        list-style: none;
-        padding: 0;
-        margin-top: 10px;
-        max-height: 200px; /* Limit height for scrollability */
-        overflow-y: auto;
-        border: 1px solid #eee;
-        border-radius: 4px;
-        background-color: white;
-        text-align: left; /* Align text within list items */
-        margin-left: auto; /* Center the list horizontally */
-        margin-right: auto;
-        max-width: 400px; /* Max width for results list */
-    }
-    #searchResultList li {
-        padding: 8px 15px;
-        cursor: pointer;
-        border-bottom: 1px solid #eee;
-    }
-    #searchResultList li:last-child {
-        border-bottom: none; /* No border for the last item */
-    }
-    #searchResultList li:hover {
-        background-color: #f0f0f0;
-    }
-    #airQualityInfo {
-      margin-top: 20px;
-      padding: 20px;
-      border-radius: 5px;
-      background-color: #f9f9f9;
-      min-height: 100px; /* Ensure space for info */
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-    }
-    .good { color: green; }
-    .fair { color: #9ACD32; }
-    .moderate { color: orange; }
-    .poor { color: red; }
-    .very-poor { color: purple; }
-    .error { color: #D8000C; background-color: #FFD2D2; padding: 10px; border-radius: 5px; }
-    .loading {
-      border: 5px solid #f3f3f3;
-      border-top: 5px solid #3498db;
-      border-radius: 50%;
-      width: 30px;
-      height: 30px;
-      animation: spin 1s linear infinite;
-      margin: 20px auto;
-    }
+    /* Spinner animation for loading states */
     @keyframes spin {
       0% { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }
     }
-    #coordsDisplay {
-        margin-top: 10px;
-        font-size: 0.9em;
-        color: #555;
+    .loading-spinner {
+      border: 4px solid rgba(255, 255, 255, 0.3); /* Lighter border for contrast */
+      border-top: 4px solid #fff; /* White spinner */
+      border-radius: 50%;
+      width: 24px;
+      height: 24px;
+      animation: spin 1s linear infinite;
     }
+    /* Custom scrollbar for search results */
+    #searchResultList::-webkit-scrollbar {
+        width: 8px;
+    }
+    #searchResultList::-webkit-scrollbar-track {
+        background: #f1f1f1;
+        border-radius: 10px;
+    }
+    #searchResultList::-webkit-scrollbar-thumb {
+        background: #cbd5e1; /* Tailwind gray-300 */
+        border-radius: 10px;
+    }
+    #searchResultList::-webkit-scrollbar-thumb:hover {
+        background: #94a3b8; /* Tailwind gray-400 */
+    }
+    /* Page specific styles */
+    .page-section {
+        display: none; /* Hidden by default */
+    }
+    .page-section.active {
+        display: block; /* Shown when active */
+    }
+    /* Active navigation link styling */
+    .nav-link.active-nav-link {
+        color: #4f46e5; /* A vibrant blue/indigo */
+        border-b-2 border-blue-600; /* Underline effect */
+        padding-bottom: 4px; /* Space for underline */
+    }
+    /* Initial state for app-container and auth-page will be handled by JS */
+    /* Remove the previous #app-container { display: none; } and #auth-page { display: none; } */
   </style>
 </head>
-<body>
-  <h1>Air Quality Checker</h1>
-  <p>Select a location on the map, or search by city name.</p>
-
-  <div class="input-group">
-    <input type="text" id="citySearchInput" placeholder="Enter city name (e.g., Kathmandu)">
-    <button id="searchCityBtn">Search</button>
-  </div>
-  <ul id="searchResultList"></ul> <div id="map"></div>
-  <div id="coordsDisplay"></div>
-  <div id="airQualityInfo">
-    <p>Select a point on the map or search for a city to see air quality information here.</p>
+<body class="bg-gradient-to-br from-blue-100 via-purple-100 to-pink-100 min-h-screen flex flex-col items-center py-10 px-4">
+  
+  <!-- Loading Overlay -->
+  <div id="loading-overlay" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50">
+    <div class="loading-spinner mb-2"></div>
+    <p class="text-white text-lg ml-4">Loading application...</p>
   </div>
 
+  <!-- Login/Signup Page -->
+  <div id="auth-page" class="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-md" style="display: none;">
+    <h1 class="text-4xl font-extrabold text-gray-900 mb-6 text-center">Welcome</h1>
+    <div class="flex justify-center mb-6">
+      <button id="showLoginBtn" class="px-6 py-2 rounded-l-lg bg-blue-500 text-white font-semibold shadow-md">Login</button>
+      <button id="showSignupBtn" class="px-6 py-2 rounded-r-lg bg-gray-200 text-gray-700 font-semibold shadow-md">Sign Up</button>
+    </div>
+
+    <!-- Login Form -->
+    <form id="loginForm" class="space-y-4">
+      <div>
+        <label for="loginUsername" class="block text-gray-700 text-sm font-bold mb-2">Username:</label>
+        <input type="text" id="loginUsername" placeholder="Your Username" required
+               class="shadow-sm appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-400">
+      </div>
+      <div>
+        <label for="loginPassword" class="block text-gray-700 text-sm font-bold mb-2">Password:</label>
+        <input type="password" id="loginPassword" placeholder="********" required
+               class="shadow-sm appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-400">
+      </div>
+      <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-6 rounded-lg shadow-md w-full">Login</button>
+      <p id="loginMessage" class="text-center text-sm mt-2"></p>
+    </form>
+
+    <!-- Signup Form -->
+    <form id="signupForm" class="space-y-4 hidden">
+      <div>
+        <label for="signupUsername" class="block text-gray-700 text-sm font-bold mb-2">Username:</label>
+        <input type="text" id="signupUsername" placeholder="Choose a Username" required
+               class="shadow-sm appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-400">
+      </div>
+      <div>
+        <label for="signupPassword" class="block text-gray-700 text-sm font-bold mb-2">Password:</label>
+        <input type="password" id="signupPassword" placeholder="********" required
+               class="shadow-sm appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-400">
+      </div>
+      <button type="submit" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2.5 px-6 rounded-lg shadow-md w-full">Sign Up</button>
+      <p id="signupMessage" class="text-center text-sm mt-2"></p>
+    </form>
+  </div>
+
+  <!-- Main App Container (Hidden until authenticated) -->
+  <div id="app-container" class="w-full max-w-3xl" style="display: none;">
+    <!-- Navigation Bar -->
+    <nav class="w-full max-w-3xl bg-white p-4 rounded-xl shadow-lg mb-8 flex justify-center gap-6">
+      <button class="nav-link text-lg font-semibold text-gray-700 hover:text-blue-600 transition duration-200 active-nav-link" data-page="dashboard">Dashboard</button>
+      <button class="nav-link text-lg font-semibold text-gray-700 hover:text-blue-600 transition duration-200" data-page="user-profile">User Profile</button>
+      <button class="nav-link text-lg font-semibold text-gray-700 hover:text-blue-600 transition duration-200" data-page="about">About</button>
+      <button id="logoutBtn" class="text-lg font-semibold text-red-600 hover:text-red-700 transition duration-200 ml-auto">Logout</button>
+    </nav>
+
+    <!-- Content Container for authenticated users -->
+    <div class="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-3xl transform transition-all duration-300 hover:scale-[1.01]">
+      
+      <!-- Dashboard Section -->
+      <div id="dashboard-section" class="page-section active">
+        <h1 class="text-4xl font-extrabold text-gray-900 mb-4 text-center drop-shadow-sm">Air Quality Explorer</h1>
+        <p class="text-lg text-gray-700 mb-8 text-center">Discover the air quality by clicking on the map or searching for a city.</p>
+
+        <!-- City Search Input -->
+        <div class="flex flex-col sm:flex-row items-center justify-center gap-4 mb-6">
+          <input type="text" id="citySearchInput" placeholder="Search for a city (e.g., New York)"
+                 class="flex-grow max-w-sm px-5 py-2.5 border border-gray-300 rounded-full focus:outline-none focus:ring-3 focus:ring-blue-400 focus:border-transparent text-gray-800 shadow-sm transition duration-200">
+          <button id="searchCityBtn"
+                  class="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-bold py-2.5 px-8 rounded-full shadow-lg transition duration-300 ease-in-out transform hover:-translate-y-1 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+            Search
+          </button>
+        </div>
+        <ul id="searchResultList" class="max-h-60 overflow-y-auto border border-gray-200 rounded-xl bg-white shadow-lg mb-6 hidden"></ul>
+
+        <!-- Map Container -->
+        <div id="map" class="h-96 w-full rounded-2xl shadow-xl border border-gray-300 mb-6 transition-all duration-300 hover:shadow-2xl"></div>
+        
+        <!-- Coordinates Display -->
+        <div id="coordsDisplay" class="text-base text-gray-600 mb-4 text-center font-medium"></div>
+
+        <!-- Air Quality Info Display -->
+        <div id="airQualityInfo" class="bg-gradient-to-br from-gray-50 to-gray-100 p-7 rounded-2xl shadow-inner min-h-[140px] flex items-center justify-center flex-col text-gray-800 border border-gray-200 transition-all duration-300">
+          <p class="text-lg text-gray-600">Select a point on the map or search for a city to see air quality information here.</p>
+        </div>
+
+        <!-- Health Alert Display -->
+        <div id="healthAlert" class="mt-6 p-4 rounded-lg shadow-md text-center font-semibold text-white hidden">
+          <!-- Alerts will be displayed here -->
+        </div>
+      </div>
+
+      <!-- User Profile Section -->
+      <div id="user-profile-section" class="page-section">
+        <h2 class="text-3xl font-bold text-gray-900 mb-6 text-center">Your Health Profile</h2>
+        <form id="userProfileForm" class="space-y-6">
+          <div>
+            <label for="userName" class="block text-gray-700 text-sm font-bold mb-2">Name:</label>
+            <input type="text" id="userName" name="userName" placeholder="Your Name"
+                   class="shadow-sm appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
+          </div>
+          <div>
+            <label for="userAge" class="block text-gray-700 text-sm font-bold mb-2">Age:</label>
+            <input type="number" id="userAge" name="userAge" placeholder="Your Age"
+                   class="shadow-sm appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
+          </div>
+          <div>
+            <label for="userLocation" class="block text-gray-700 text-sm font-bold mb-2">Primary Location (e.g., Kathmandu):</label>
+            <input type="text" id="userLocation" name="userLocation" placeholder="Your City/Region"
+                   class="shadow-sm appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent">
+            <p class="text-xs text-gray-500 mt-1">This is for your profile, not for map search.</p>
+          </div>
+          <div>
+            <label for="userDisease" class="block text-gray-700 text-sm font-bold mb-2">Health Condition/Disease:</label>
+            <select id="userDisease" name="userDisease"
+                    class="shadow-sm border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent bg-white">
+              <option value="">Select your condition</option>
+              <option value="none">No specific condition (Healthy)</option>
+              <option value="allergies">Allergies</option>
+              <option value="mild_asthma">Mild Asthma</option>
+              <option value="copd">COPD (Chronic Obstructive Pulmonary Disease)</option>
+              <option value="heart_disease">Heart Disease</option>
+              <option value="elderly">Elderly (65+)</option>
+              <option value="child">Young Child (under 12)</option>
+              <option value="other_respiratory">Other Respiratory Issues</option>
+            </select>
+            <p class="text-xs text-gray-500 mt-1">This helps us provide personalized air quality alerts.</p>
+          </div>
+          <button type="submit" id="saveProfileBtn"
+                  class="bg-green-500 hover:bg-green-600 text-white font-bold py-2.5 px-6 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:-translate-y-1 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 w-full">
+            Save Profile
+          </button>
+          <div id="profileMessage" class="text-center mt-4 text-sm font-medium"></div>
+        </form>
+      </div>
+
+      <!-- About Section -->
+      <div id="about-section" class="page-section">
+        <h2 class="text-3xl font-bold text-gray-900 mb-6 text-center">About Air Quality Health Companion</h2>
+        <div class="text-gray-700 leading-relaxed space-y-4">
+          <p>The Air Quality Health Companion is designed to help you stay informed about the air quality in your chosen locations. By integrating with the World Air Quality Index (WAQI) API, we provide real-time AQI data, allowing you to make informed decisions about your outdoor activities.</p>
+          <p class="text-sm text-gray-500 mt-4">Data provided by <a href="https://aqicn.org/" target="_blank" class="text-blue-600 hover:underline">World Air Quality Index (WAQI) API</a>.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Leaflet JavaScript library -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
     integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
     crossorigin=""></script>
 
   <script>
+    // DOM Elements
+    const loadingOverlay = document.getElementById('loading-overlay');
+    const authPage = document.getElementById('auth-page');
+    const appContainer = document.getElementById('app-container');
+    const loginForm = document.getElementById('loginForm');
+    const signupForm = document.getElementById('signupForm');
+    const showLoginBtn = document.getElementById('showLoginBtn');
+    const showSignupBtn = document.getElementById('showSignupBtn');
+    const loginUsername = document.getElementById('loginUsername'); 
+    const loginPassword = document.getElementById('loginPassword');
+    const signupUsername = document.getElementById('signupUsername'); 
+    const signupPassword = document.getElementById('signupPassword');
+    const loginMessage = document.getElementById('loginMessage');
+    const signupMessage = document.getElementById('signupMessage');
+    const logoutBtn = document.getElementById('logoutBtn');
+
+    const navLinks = document.querySelectorAll('.nav-link');
+    const pageSections = document.querySelectorAll('.page-section');
     const output = document.getElementById('airQualityInfo');
     const coordsDisplay = document.getElementById('coordsDisplay');
     const citySearchInput = document.getElementById('citySearchInput');
     const searchCityBtn = document.getElementById('searchCityBtn');
     const searchResultList = document.getElementById('searchResultList');
+    const healthAlert = document.getElementById('healthAlert');
+
+    // User Profile Form Elements
+    const userProfileForm = document.getElementById('userProfileForm');
+    const userNameInput = document.getElementById('userName');
+    const userAgeInput = document.getElementById('userAge');
+    const userLocationInput = document.getElementById('userLocation');
+    const userDiseaseSelect = document.getElementById('userDisease');
+    const profileMessage = document.getElementById('profileMessage');
+
     let map;
     let currentMarker;
+    let currentUserId = null; // Stores current logged-in user's ID
+    let userProfile = {}; // Stores user profile data from backend
 
-    // Helper function to update AQI info display
+    const API_BASE_URL = 'http://127.0.0.1:5000'; // Your Flask backend URL
+
+    // --- Authentication UI Toggles ---
+    function showLoginForm() {
+        console.log("showLoginForm called."); // Debug log
+        loginForm.classList.remove('hidden');
+        signupForm.classList.add('hidden');
+        showLoginBtn.classList.add('bg-blue-500', 'text-white');
+        showLoginBtn.classList.remove('bg-gray-200', 'text-gray-700');
+        showSignupBtn.classList.remove('bg-blue-500', 'text-white');
+        showSignupBtn.classList.add('bg-gray-200', 'text-gray-700');
+        loginMessage.textContent = '';
+        signupMessage.textContent = '';
+    }
+
+    function showSignupForm() {
+        console.log("showSignupForm called."); // Debug log
+        signupForm.classList.remove('hidden');
+        loginForm.classList.add('hidden');
+        showSignupBtn.classList.add('bg-blue-500', 'text-white');
+        showSignupBtn.classList.remove('bg-gray-200', 'text-gray-700');
+        showLoginBtn.classList.remove('bg-blue-500', 'text-white');
+        showLoginBtn.classList.add('bg-gray-200', 'text-gray-700');
+        loginMessage.textContent = '';
+        signupMessage.textContent = '';
+    }
+
+    // --- Backend Authentication Handlers ---
+    async function handleLogin(event) {
+        event.preventDefault();
+        console.log("Attempting login..."); // Debug log
+        const username = loginUsername.value;
+        const password = loginPassword.value;
+        loginMessage.textContent = 'Logging in...';
+        loginMessage.className = 'text-center text-sm mt-2 text-blue-600';
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/login_user`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ username, password })
+            });
+            const data = await response.json();
+
+            if (data.status === 'success') {
+                console.log("Login successful. User ID:", data.user_id); // Debug log
+                currentUserId = data.user_id;
+                localStorage.setItem('currentUserId', currentUserId); // Store user ID in local storage
+                await loadUserProfile(); // Load profile after login
+                showAppContent(); // This should make app-container visible
+            } else {
+                console.log("Login failed:", data.message); // Debug log
+                loginMessage.textContent = `Login failed: ${data.message}`;
+                loginMessage.className = 'text-center text-sm mt-2 text-red-600';
+            }
+        } catch (error) {
+            console.error("Login failed (network/unexpected error):", error); // Debug log
+            loginMessage.textContent = `Login failed: Could not connect to server or unexpected error.`;
+            loginMessage.className = 'text-center text-sm mt-2 text-red-600';
+        }
+    }
+
+    async function handleSignup(event) {
+        event.preventDefault();
+        console.log("Attempting signup..."); // Debug log
+        const username = signupUsername.value;
+        const password = signupPassword.value;
+        signupMessage.textContent = 'Signing up...';
+        signupMessage.className = 'text-center text-sm mt-2 text-blue-600';
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/signup_user`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ username, password })
+            });
+            const data = await response.json();
+
+            if (data.status === 'success') {
+                console.log("Signup successful. User ID:", data.user_id); // Debug log
+                currentUserId = data.user_id;
+                localStorage.setItem('currentUserId', currentUserId); // Store user ID
+                await loadUserProfile(); // Load default profile after signup
+                showAppContent(); // This should make app-container visible
+            } else {
+                console.log("Signup failed:", data.message); // Debug log
+                signupMessage.textContent = `Signup failed: ${data.message}`;
+                signupMessage.className = 'text-center text-sm mt-2 text-red-600';
+            }
+        } catch (error) {
+            console.error("Signup failed (network/unexpected error):", error); // Debug log
+            signupMessage.textContent = `Signup failed: Could not connect to server or unexpected error.`;
+            signupMessage.className = 'text-center text-sm mt-2 text-red-600';
+        }
+    }
+
+    async function handleLogout() {
+        console.log("Attempting logout..."); // Debug log
+        try {
+            const response = await fetch(`${API_BASE_URL}/logout_user`, {
+                method: 'POST'
+            });
+            const data = await response.json();
+
+            if (data.status === 'success') {
+                console.log("Logout successful."); // Debug log
+                currentUserId = null;
+                localStorage.removeItem('currentUserId'); // Clear user ID from local storage
+                userProfile = {}; // Clear local user profile
+                showAuthPage(); // Show auth page
+            } else {
+                console.error("Logout failed:", data.message); // Debug log
+                // Display a custom error message
+                const logoutErrorDiv = document.createElement('div');
+                logoutErrorDiv.className = 'fixed top-4 right-4 bg-red-500 text-white p-3 rounded-lg shadow-lg z-50';
+                logoutErrorDiv.textContent = `Logout failed: ${data.message}`;
+                document.body.appendChild(logoutErrorDiv);
+                setTimeout(() => logoutErrorDiv.remove(), 3000);
+            }
+        } catch (error) {
+            console.error("Logout failed (network/unexpected error):", error); // Debug log
+            const logoutErrorDiv = document.createElement('div');
+            logoutErrorDiv.className = 'fixed top-4 right-4 bg-red-500 text-white p-3 rounded-lg shadow-lg z-50';
+            logoutErrorDiv.textContent = 'Logout failed: Could not connect to server.';
+            document.body.appendChild(logoutErrorDiv);
+            setTimeout(() => logoutErrorDiv.remove(), 3000);
+        }
+    }
+
+    // --- UI State Management ---
+    function showAuthPage() {
+        console.log("showAuthPage: Making auth-page visible, hiding app-container."); // Debug log
+        authPage.style.display = 'block'; // Directly set display
+        appContainer.style.display = 'none'; // Directly set display
+        showLoginForm(); // Default to login form
+    }
+
+    function showAppContent() {
+        console.log("showAppContent: Making app-container visible, hiding auth-page."); // Debug log
+        authPage.style.display = 'none'; // Directly set display
+        appContainer.style.display = 'block'; // Directly set display
+        showPage('dashboard'); // Go to dashboard after login
+    }
+
+    // --- User Profile Management ---
+    async function loadUserProfile() {
+        console.log("loadUserProfile called."); // Debug log
+        profileMessage.textContent = 'Loading profile...';
+        profileMessage.className = "text-center mt-4 text-sm font-medium text-blue-600";
+        if (!currentUserId) {
+            profileMessage.textContent = 'No user logged in to load profile.';
+            profileMessage.className = "text-center mt-4 text-sm font-medium text-red-600";
+            console.warn("loadUserProfile: No currentUserId found."); // Debug log
+            return;
+        }
+
+        try {
+            // NOTE: This endpoint is missing in app.py. It needs to be added for profile loading.
+            const response = await fetch(`${API_BASE_URL}/get_profile`);
+            const data = await response.json();
+
+            if (data.status === 'ok') {
+                console.log("Profile loaded successfully:", data.profile); // Debug log
+                // Map backend profile keys (e.g., User_Name) to frontend keys (e.g., userName)
+                userProfile = {
+                    name: data.profile.User_Name || '',
+                    age: data.profile.User_Age || null,
+                    location: data.profile.User_Location || '',
+                    disease: data.profile.User_Disease || 'none',
+                    diseaseCategory: data.profile.disease_category || 'normal'
+                };
+                userNameInput.value = userProfile.name;
+                userAgeInput.value = userProfile.age;
+                userLocationInput.value = userProfile.location;
+                userDiseaseSelect.value = userProfile.disease;
+                profileMessage.textContent = "Profile loaded successfully!";
+                profileMessage.className = "text-center mt-4 text-sm font-medium text-green-600";
+            } else {
+                console.error("Error loading profile:", data.message); // Debug log
+                profileMessage.textContent = `Error loading profile: ${data.message}`;
+                profileMessage.className = "text-center mt-4 text-sm font-medium text-red-600";
+                // If profile not found, maybe initialize with defaults
+                userProfile = { name: '', age: null, location: '', disease: 'none', diseaseCategory: 'normal' };
+                userNameInput.value = ''; userAgeInput.value = ''; userLocationInput.value = ''; userDiseaseSelect.value = 'none';
+            }
+        } catch (error) {
+            console.error("Error fetching profile (network/unexpected error):", error); // Debug log
+            profileMessage.textContent = `Error loading profile: Could not connect to server.`;
+            profileMessage.className = "text-center mt-4 text-sm font-medium text-red-600";
+            userProfile = { name: '', age: null, location: '', disease: 'none', diseaseCategory: 'normal' }; // Ensure profile is reset
+        }
+    }
+
+    async function saveUserProfile(event) {
+        event.preventDefault();
+        console.log("saveUserProfile called."); // Debug log
+        profileMessage.textContent = 'Saving profile...';
+        profileMessage.className = "text-center mt-4 text-sm font-medium text-blue-600";
+
+        if (!currentUserId) {
+            profileMessage.textContent = 'Please log in to save your profile.';
+            profileMessage.className = "text-center mt-4 text-sm font-medium text-red-600";
+            console.warn("saveUserProfile: No currentUserId found."); // Debug log
+            return;
+        }
+
+        const updatedProfile = {
+            name: userNameInput.value.trim(),
+            age: parseInt(userAgeInput.value) || null,
+            location: userLocationInput.value.trim(),
+            disease: userDiseaseSelect.value,
+            diseaseCategory: categorizeDisease(userDiseaseSelect.value, parseInt(userAgeInput.value) || 0)
+        };
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/save_profile`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(updatedProfile)
+            });
+            const data = await response.json();
+
+            if (data.status === 'success') {
+                console.log("Profile saved successfully."); // Debug log
+                userProfile = updatedProfile; // Update local profile object
+                profileMessage.textContent = "Profile saved successfully!";
+                profileMessage.className = "text-center mt-4 text-sm font-medium text-green-600";
+            } else {
+                console.error("Error saving profile:", data.message); // Debug log
+                profileMessage.textContent = `Error saving profile: ${data.message}`;
+                profileMessage.className = "text-center mt-4 text-sm font-medium text-red-600";
+            }
+        } catch (error) {
+            console.error("Error saving profile (network/unexpected error):", error); // Debug log
+            profileMessage.textContent = `Error saving profile: Could not connect to server or unexpected error.`;
+            profileMessage.className = "text-center mt-4 text-sm font-medium text-red-600";
+        }
+    }
+
+    // Disease Categorization Logic
+    function categorizeDisease(disease, age) {
+        const criticalConditions = ['copd', 'heart_disease', 'other_respiratory'];
+        const highConditions = ['allergies', 'mild_asthma'];
+
+        if (criticalConditions.includes(disease)) {
+            return 'critical';
+        }
+        if (highConditions.includes(disease) || age >= 65 || (disease === 'child' && age < 12)) {
+            return 'high';
+        }
+        return 'normal'; // Default for 'none' or other less severe conditions
+    }
+
+    // --- Page Navigation Logic ---
+    function showPage(pageId) {
+        console.log(`showPage called with: ${pageId}`); // Debug log
+        navLinks.forEach(link => {
+            if (link.dataset.page === pageId) {
+                link.classList.add('active-nav-link', 'text-blue-600');
+            } else {
+                link.classList.remove('active-nav-link', 'text-blue-600');
+            }
+        });
+
+        pageSections.forEach(section => {
+            if (section.id === `${pageId}-section`) {
+                section.classList.add('active');
+            } else {
+                section.classList.remove('active');
+            }
+        });
+
+        // Initialize map only when dashboard is shown AND map hasn't been initialized yet
+        if (pageId === 'dashboard' && !map) {
+            console.log("Initializing map for dashboard."); // Debug log
+            initMap();
+        }
+    }
+
+    // --- AQI Display & Alert Logic ---
     function displayAqiInfo(data) {
+        console.log("displayAqiInfo called with data:", data); // Debug log
         const aqi = data.data.aqi;
         const components = data.data.iaqi || {};
         const pm25 = components.pm25 ? components.pm25.v : "N/A";
         const pm10 = components.pm10 ? components.pm10.v : "N/A";
         let city = data.data.city?.name || "Selected location";
 
-        let locationMessage = `🌍 Air Quality in ${city}`;
+        let locationMessage = `<span class="font-bold text-xl text-gray-900">Air Quality in ${city}</span>`;
 
         if (data.isFallback && data.fallbackCityName) {
-            locationMessage += `<br><small>(Data for ${data.fallbackCityName} as exact location data was unavailable)</small>`;
-        }
-
-        let level, levelClass;
-        if (aqi <= 50) {
-          level = "Good"; levelClass = "good";
-        } else if (aqi <= 100) {
-          level = "Fair"; levelClass = "fair";
-        } else if (aqi <= 150) {
-          level = "Moderate"; levelClass = "moderate";
-        } else if (aqi <= 200) {
-          level = "Poor"; levelClass = "poor";
-        } else {
-          level = "Very Poor"; levelClass = "very-poor";
+            locationMessage += `<br><span class="text-sm text-gray-500">(Data for ${data.fallbackCityName} as exact location data was unavailable)</span>`;
         }
 
         output.innerHTML = `
-          <h3>${locationMessage}</h3>
-          <p><strong>AQI Level:</strong> <span class="${levelClass}">${aqi} (${level})</span></p>
-          <p><strong>PM2.5:</strong> ${pm25} µg/m³</p>
-          <p><strong>PM10:</strong> ${pm10} µg/m³</p>
-          <p><small>Last updated: ${new Date().toLocaleString()}</small></p>
+          <h3 class="2xl font-extrabold mb-3">${locationMessage}</h3>
+          <p class="text-xl mb-1"><strong>AQI Level:</strong> <span class="${getAqiLevelClass(aqi)} font-extrabold">${aqi} (${getAqiLevel(aqi)})</span></p>
+          <p class="text-lg mb-1"><strong>PM2.5:</strong> ${pm25} µg/m³</p>
+          <p class="text-lg mb-2"><strong>PM10:</strong> ${pm10} µg/m³</p>
+          <p class="text-xs text-gray-500 mt-2">Last updated: ${new Date().toLocaleString()}</p>
         `;
+
+        generateHealthAlert(aqi);
     }
 
-    // Main function to fetch AQI (either by lat/lon or station_id)
+    function getAqiLevel(aqi) {
+        if (aqi <= 50) return "Good";
+        if (aqi <= 100) return "Fair";
+        if (aqi <= 150) return "Moderate";
+        if (aqi <= 200) return "Poor";
+        return "Very Poor";
+    }
+
+    function getAqiLevelClass(aqi) {
+        if (aqi <= 50) return "text-green-500";
+        if (aqi <= 100) return "text-yellow-500";
+        if (aqi <= 150) return "text-orange-500";
+        if (aqi <= 200) return "text-red-500";
+        return "text-purple-600";
+    }
+
+    function generateHealthAlert(aqi) {
+        console.log("generateHealthAlert called with AQI:", aqi); // Debug log
+        const userDiseaseCategory = userProfile.diseaseCategory || 'normal';
+        let alertMessage = "";
+        let alertClass = "";
+
+        const alerts = {
+            'normal': {
+                good: "Enjoy the fresh air! Be safe.",
+                fair: "Air quality is fair. Be safe.",
+                moderate: "Air quality is moderate. Consider wearing a mask if sensitive.",
+                poor: "Air quality is poor. Limit prolonged outdoor exertion. Consider staying indoors.",
+                very_poor: "Air quality is very poor. Avoid all outdoor activities. Wear a mask if you must go out."
+            },
+            'high': {
+                good: "Air quality is good. Wear a mask for extra caution if sensitive.",
+                fair: "Air quality is fair. Wear a mask, limit outdoor activities.",
+                moderate: "Air quality is moderate. Avoid outdoor activities. Wear a high-quality mask.",
+                poor: "Air quality is poor. Do not go outside unless absolutely necessary. Wear a mask.",
+                very_poor: "Air quality is very poor. Stay indoors. Avoid all outdoor activities."
+            },
+            'critical': {
+                good: "Even with good air quality, be safe and wear a mask if you feel sensitive.",
+                fair: "Air quality is fair. Avoid going outside. Wear a mask.",
+                moderate: "Air quality is moderate. Do not go outside. Wear a high-quality mask.",
+                poor: "Air quality is poor. Absolutely do not go outside. Stay indoors and keep windows closed.",
+                very_poor: "Air quality is very poor. Stay indoors. Consult your doctor if symptoms worsen."
+            }
+        };
+
+        const aqiLevel = getAqiLevel(aqi).toLowerCase().replace(' ', '_');
+
+        alertMessage = alerts[userDiseaseCategory][aqiLevel] || "No specific alert for this combination.";
+
+        if (aqi <= 50) alertClass = "bg-green-500";
+        else if (aqi <= 100) alertClass = "bg-yellow-500";
+        else if (aqi <= 150) alertClass = "bg-orange-500";
+        else if (aqi <= 200) alertClass = "bg-red-500";
+        else alertClass = "bg-purple-600";
+
+        healthAlert.className = `mt-6 p-4 rounded-lg shadow-md text-center font-semibold text-white ${alertClass}`;
+        healthAlert.textContent = `Health Advisory: ${alertMessage}`;
+        healthAlert.classList.remove('hidden');
+    }
+
+    // --- Main function to fetch AQI ---
     async function fetchAqi(params) {
-      output.innerHTML = '<div class="loading"></div><p>Fetching air quality data...</p>';
+      console.log("fetchAqi called with params:", params); // Debug log
+      output.innerHTML = '<div class="loading-spinner mb-2"></div><p class="text-gray-600 text-sm mt-2">Fetching current air quality data...</p>';
+      coordsDisplay.innerHTML = '';
+      healthAlert.classList.add('hidden');
+
       try {
         const urlParams = new URLSearchParams(params).toString();
-        const response = await fetch(`/get_aqi?${urlParams}`);
+        const response = await fetch(`${API_BASE_URL}/get_aqi?${urlParams}`);
         if (!response.ok) {
-          // If response is not OK (e.g., 500, 502, 503, 504), read the error JSON from Flask
           const errorData = await response.json();
           throw new Error(errorData.data || `HTTP error! Status: ${response.status}`);
         }
         const data = await response.json();
-        console.log("API response:", data);
+        console.log("API response for AQI:", data); // Debug log
         displayAqiInfo(data);
+
       } catch (error) {
-        output.innerHTML = `<p class="error">Error: ${error.message}</p>`;
+        console.error("Error fetching AQI:", error); // Debug log
+        output.innerHTML = `<p class="text-red-600 font-semibold text-center p-4 bg-red-50 rounded-lg shadow-sm">Error: ${error.message}</p>`;
+        healthAlert.classList.add('hidden');
       }
     }
 
-    // Initialize the map
+    // --- Map Initialization & Interaction ---
     function initMap() {
-      map = L.map('map').setView([27.7172, 85.3240], 13); // Centered on Kathmandu, Nepal
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-      }).addTo(map);
-      map.on('click', onMapClick);
+      console.log("initMap called."); // Debug log
+      if (typeof L === 'undefined') {
+        console.error("Leaflet library (L) is not loaded. Cannot initialize map.");
+        document.getElementById('map').innerHTML = '<p class="text-red-500 text-center mt-2">Map library failed to load. Please refresh.</p>';
+        return;
+      }
+      if (!map) {
+        map = L.map('map').setView([27.7172, 85.3240], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+        map.on('click', onMapClick);
+        console.log("Map initialized."); // Debug log
+      }
     }
 
-    // Handle map clicks
     function onMapClick(e) {
+      console.log("Map clicked at:", e.latlng); // Debug log
       const lat = e.latlng.lat;
       const lon = e.latlng.lng;
 
-      // Clear search results list and input
       searchResultList.innerHTML = '';
+      searchResultList.classList.add('hidden');
       citySearchInput.value = '';
+      coordsDisplay.innerHTML = `Selected Coordinates: <span class="font-semibold text-blue-600">Lat: ${lat.toFixed(6)}, Lon: ${lon.toFixed(6)}</span>`;
 
       if (currentMarker) {
         map.removeLayer(currentMarker);
       }
       currentMarker = L.marker([lat, lon]).addTo(map)
         .bindPopup(`Latitude: ${lat.toFixed(6)}<br>Longitude: ${lon.toFixed(6)}`).openPopup();
-      coordsDisplay.innerHTML = `Selected Coordinates: Lat: ${lat.toFixed(6)}, Lon: ${lon.toFixed(6)}`;
-
+      
       fetchAqi({ lat: lat, lon: lon });
     }
 
-    // Handle city search button click
+    // --- City Search Logic ---
     searchCityBtn.addEventListener('click', async function() {
+      console.log("Search city button clicked."); // Debug log
       const keyword = citySearchInput.value.trim();
       if (!keyword) {
-        output.innerHTML = '<p class="error">Please enter a city name to search.</p>';
+        output.innerHTML = '<p class="text-red-600 font-semibold text-center p-4 bg-red-50 rounded-lg shadow-sm">Please enter a city name to search.</p>';
+        searchResultList.classList.add('hidden');
+        console.warn("City search: No keyword entered."); // Debug log
         return;
       }
 
-      output.innerHTML = '<div class="loading"></div><p>Searching for cities...</p>';
-      searchResultList.innerHTML = ''; // Clear previous search results
+      output.innerHTML = '<div class="loading-spinner mb-2"></div><p class="text-gray-600 text-sm mt-2">Searching for cities...</p>';
+      searchResultList.innerHTML = '';
+      searchResultList.classList.add('hidden');
+      coordsDisplay.innerHTML = '';
+      healthAlert.classList.add('hidden');
 
       try {
-        const response = await fetch(`/search_city?keyword=${encodeURIComponent(keyword)}`);
+        const response = await fetch(`${API_BASE_URL}/search_city?keyword=${encodeURIComponent(keyword)}`);
         if (!response.ok) {
           const errorData = await response.json();
           throw new Error(errorData.data || `HTTP error! Status: ${response.status}`);
         }
         const data = await response.json();
-        console.log("Search API response:", data);
+        console.log("Search API response:", data); // Debug log
 
         if (data.data && data.data.length > 0) {
-          output.innerHTML = '<p>Select a station from the search results:</p>';
+          output.innerHTML = '<p class="text-gray-700 text-center mb-4">Select a station from the search results:</p>';
+          searchResultList.classList.remove('hidden');
           data.data.forEach(station => {
             const listItem = document.createElement('li');
+            listItem.className = 'px-4 py-3 cursor-pointer border-b border-gray-200 last:border-b-0 hover:bg-blue-50 transition duration-150 ease-in-out text-gray-800 font-medium';
             listItem.textContent = station.name;
-            // Store uid, lat, lon as data attributes for easy access
             listItem.dataset.uid = station.uid;
             listItem.dataset.lat = station.lat;
             listItem.dataset.lon = station.lon;
 
             listItem.addEventListener('click', function() {
+              console.log("Search result clicked:", this.textContent); // Debug log
               const selectedUid = this.dataset.uid;
               const selectedLat = parseFloat(this.dataset.lat);
               const selectedLon = parseFloat(this.dataset.lon);
 
-              // Update map to show selected station
               if (currentMarker) {
                 map.removeLayer(currentMarker);
               }
-              if (!isNaN(selectedLat) && !isNaN(selectedLon)) { // Check if coordinates are valid numbers
+              if (!isNaN(selectedLat) && !isNaN(selectedLon)) {
                 currentMarker = L.marker([selectedLat, selectedLon]).addTo(map)
                   .bindPopup(`Station: ${this.textContent}<br>Lat: ${selectedLat.toFixed(6)}<br>Lon: ${selectedLon.toFixed(6)}`).openPopup();
-                map.setView([selectedLat, selectedLon], 13); // Center map on station
-                coordsDisplay.innerHTML = `Selected Station: ${this.textContent} (Lat: ${selectedLat.toFixed(6)}, Lon: ${selectedLon.toFixed(6)})`;
+                map.setView([selectedLat, selectedLon], 13);
+                coordsDisplay.innerHTML = `Selected Station: <span class="font-semibold text-blue-600">${this.textContent}</span> (Lat: ${selectedLat.toFixed(6)}, Lon: ${selectedLon.toFixed(6)})`;
               } else {
-                coordsDisplay.innerHTML = `Selected Station: ${this.textContent} (Coordinates not available)`;
+                coordsDisplay.innerHTML = `Selected Station: <span class="font-semibold text-blue-600">${this.textContent}</span> (Coordinates not available)`;
               }
 
-              searchResultList.innerHTML = ''; // Clear results after selection
-              fetchAqi({ station_id: selectedUid }); // Fetch AQI by station ID
+              searchResultList.innerHTML = '';
+              searchResultList.classList.add('hidden');
+              fetchAqi({ station_id: selectedUid });
             });
             searchResultList.appendChild(listItem);
           });
         } else {
-          output.innerHTML = `<p class="error">No air quality stations found for "${keyword}".</p>`;
+          output.innerHTML = `<p class="text-red-600 font-semibold text-center p-4 bg-red-50 rounded-lg shadow-sm">No air quality stations found for "${keyword}".</p>`;
+          searchResultList.classList.add('hidden');
+          console.log("No search results found for:", keyword); // Debug log
         }
 
       } catch (error) {
-        output.innerHTML = `<p class="error">Error during search: ${error.message}</p>`;
+        console.error("Error during city search:", error); // Debug log
+        output.innerHTML = `<p class="text-red-600 font-semibold text-center p-4 bg-red-50 rounded-lg shadow-sm">Error during search: ${error.message}</p>`;
+        searchResultList.classList.add('hidden');
       }
     });
 
-    // Initialize map when the page loads
-    window.onload = initMap;
+    // --- Initial Load and Session Check ---
+    document.addEventListener('DOMContentLoaded', async () => {
+        console.log("DOMContentLoaded fired. Showing loading overlay."); // Debug log
+        loadingOverlay.style.display = 'flex'; // Ensure loading overlay is visible initially
+
+        try {
+            // Check if a user ID is already in local storage (simulating a logged-in session)
+            currentUserId = localStorage.getItem('currentUserId');
+            console.log("Initial currentUserId from localStorage:", currentUserId); // Debug log
+
+            if (currentUserId) {
+                // Validate session with backend (optional but good practice)
+                const response = await fetch(`${API_BASE_URL}/get_current_user_id`);
+                const data = await response.json();
+                if (data.status === 'ok' && data.user_id == currentUserId) { // Use == for type coercion if user_id from localStorage is string
+                    console.log("Session validated for user:", currentUserId); // Debug log
+                    await loadUserProfile(); // Load profile if session is valid
+                    showAppContent();
+                } else {
+                    console.warn("Session invalid or user ID mismatch. Logging out."); // Debug log
+                    localStorage.removeItem('currentUserId');
+                    currentUserId = null;
+                    showAuthPage();
+                }
+            } else {
+                console.log("No user ID in localStorage. Showing auth page."); // Debug log
+                showAuthPage(); // No user ID in local storage, show login page
+            }
+        } catch (error) {
+            console.error("Error during initial load/session check:", error); // Debug log
+            localStorage.removeItem('currentUserId'); // Clear potentially bad ID
+            currentUserId = null;
+            showAuthPage(); // Fallback to auth page on error
+        } finally {
+            console.log("Hiding loading overlay."); // Debug log
+            loadingOverlay.style.display = 'none'; // Always hide loading overlay at the end
+        }
+    });
+
+    // --- Event Listeners ---
+    showLoginBtn.addEventListener('click', showLoginForm);
+    showSignupBtn.addEventListener('click', showSignupForm);
+    loginForm.addEventListener('submit', handleLogin);
+    signupForm.addEventListener('submit', handleSignup);
+    logoutBtn.addEventListener('click', handleLogout);
+
+    userProfileForm.addEventListener('submit', saveUserProfile); // Call saveUserProfile directly
+
+    // Add event listeners for navigation links
+    navLinks.forEach(link => {
+        link.addEventListener('click', function() {
+            const pageId = this.dataset.page;
+            showPage(pageId);
+        });
+    });
+
+    // Initial map setup is now handled by showPage('dashboard') after login
   </script>
 </body>
 </html>
