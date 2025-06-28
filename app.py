@@ -1,6 +1,6 @@
 import requests
 import mysql.connector
-from flask import Flask, render_template, jsonify, request, session
+from flask import Flask, render_template, jsonify, request, session, send_from_directory
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
 import os
@@ -80,7 +80,7 @@ def signup_user():
         # User_Name is set to the provided username.
         insert_query = """
         INSERT INTO user_info (User_Name, password_hash, User_Age, User_Location, User_Disease, disease_category)
-        VALUES (%s, %s, NULL, '', 'none', 'normal')
+        VALUES (%s, %s, 0, '', 'none', 'normal')
         """
         cursor.execute(insert_query, (username, password_hash))
         conn.commit()
@@ -109,6 +109,11 @@ def signup_user():
     finally:
         cursor.close()
         conn.close() 
+
+@app.route('/favicon.ico')
+def favicon():
+    return send_from_directory(os.path.join(app.root_path, 'static'),
+                               'aircarelogo.jpeg', mimetype='image/jpeg')
 
 @app.route('/login_user', methods=['POST'])
 def login_user():
@@ -162,6 +167,43 @@ def get_current_user_id():
         return jsonify({"status": "ok", "user_id": user_id}), 200
     else:
         return jsonify({"status": "error", "message": "No user logged in"}), 401
+
+# --- NEW: User Profile Retrieval Route ---
+@app.route('/get_profile', methods=['GET'])
+def get_profile():
+    """
+    Fetches the profile data for the currently logged-in user.
+    """
+    if 'user_id' not in session:
+        return jsonify({"status": "error", "message": "Unauthorized: No user logged in"}), 401
+
+    user_id = session['user_id']
+    conn = get_db_connection()
+    if conn is None:
+        return jsonify({"status": "error", "message": "Database connection failed"}), 500
+
+    cursor = conn.cursor(dictionary=True) # Return rows as dictionaries
+    try:
+        cursor.execute(
+            "SELECT User_Name, User_Age, User_Location, User_Disease, disease_category FROM user_info WHERE User_id = %s",
+            (user_id,)
+        )
+        profile_data = cursor.fetchone()
+
+        if profile_data:
+            return jsonify({"status": "ok", "profile": profile_data}), 200
+        else:
+            return jsonify({"status": "error", "message": "Profile not found for this user."}), 404
+    except mysql.connector.Error as err:
+        print(f"MySQL Error during profile fetch: {err}")
+        return jsonify({"status": "error", "message": f"Database error during profile fetch: {err}"}), 500
+    except Exception as e:
+        print(f"General Error during profile fetch: {e}")
+        return jsonify({"status": "error", "message": f'An unexpected error occurred during profile fetch: {repr(e)}'}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
 
 # --- User Profile Management Routes ---
 @app.route('/save_profile', methods=['POST'])
